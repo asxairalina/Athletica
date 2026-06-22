@@ -65,7 +65,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          // Fallback значения при ошибке
           _userProfile = UserProfile(
             fullName: 'Пользователь',
             height: 170,

@@ -1,28 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'services/navigation_service.dart';
 import 'services/task_service.dart';
-import 'services/workout_streak_service.dart';
 import 'services/progress_service.dart';
-import 'services/analytics_service.dart';
 import 'services/supabase_service.dart';
 import 'screens/home_screen.dart';
-import 'screens/profile_screen.dart';
 import 'screens/tasks_screen.dart';
 import 'screens/workout_screen.dart';
 import 'screens/analytics_screen.dart';
-import 'screens/settings_screen.dart';
+import 'screens/news_feed_screen.dart';
 import 'screens/auth_screen.dart';
 import 'screens/profile_setup_screen.dart';
 import 'theme/app_theme.dart';
 import 'providers/theme_provider.dart';
+import 'services/app_messenger.dart';
 import 'widgets/avatar_dropdown.dart';
 import 'config/supabase_config.dart';
 
-// Глобальная переменная для отслеживания инициализации
-bool _isSupabaseReady = false;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -35,10 +30,8 @@ void main() async {
     );
     await SupabaseService().initialize();
     print('Supabase initialized');
-    _isSupabaseReady = true;
   } catch (e) {
     print('Supabase init error: $e');
-    _isSupabaseReady = true; // Все равно запускаем
   }
   
   runApp(const AthleticaApp());
@@ -54,6 +47,7 @@ class AthleticaApp extends StatelessWidget {
       child: Consumer<ThemeProvider>(
         builder: (context, themeProvider, child) {
           return MaterialApp(
+            scaffoldMessengerKey: appScaffoldMessengerKey,
             title: 'Athletica',
             theme: AppTheme.lightTheme,
             darkTheme: AppTheme.darkTheme,
@@ -164,9 +158,6 @@ class _AuthWrapperState extends State<AuthWrapper> {
   }
 }
 
-// Глобальный ключ для доступа к MainScreen
-final GlobalKey<_MainScreenState> mainScreenKey = GlobalKey<_MainScreenState>();
-
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
 
@@ -175,27 +166,17 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
-  int _currentIndex = 0;
-
   final List<Widget> _screens = [
     const HomeScreen(),
     const TasksScreen(),
     const AnalyticsScreen(),
+    const NewsFeedScreen(),
     const WorkoutScreen(),
   ];
 
   @override
   void initState() {
     super.initState();
-    // Слушаем изменения из NavigationService
-    NavigationService.addListener(() {
-      if (mounted) {
-        setState(() {
-          _currentIndex = NavigationService.currentIndexNotifier.value;
-        });
-      }
-    });
-
     _initUserSession();
   }
 
@@ -208,7 +189,6 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   void dispose() {
-    NavigationService.removeListener(() {});
     super.dispose();
   }
 
@@ -216,60 +196,53 @@ class _MainScreenState extends State<MainScreen> {
   Widget build(BuildContext context) {
     return Consumer<ThemeProvider>(
       builder: (context, themeProvider, child) {
-        return MaterialApp(
-          title: 'Athletica',
-          theme: AppTheme.lightTheme,
-          darkTheme: AppTheme.darkTheme,
-          themeMode: themeProvider.themeMode,
-          home: Scaffold(
-            appBar: AppBar(
-              title: const Text('Athletica'),
-              actions: const [
-                AvatarDropdown(),
-              ],
-            ),
-            body: ValueListenableBuilder<int>(
-              valueListenable: NavigationService.currentIndexNotifier,
-              builder: (context, currentIndex, child) {
-                return _screens[currentIndex];
-              },
-            ),
-            bottomNavigationBar: ValueListenableBuilder<int>(
-              valueListenable: NavigationService.currentIndexNotifier,
-              builder: (context, currentIndex, child) {
-                return BottomNavigationBar(
-                  currentIndex: currentIndex,
-                  onTap: (index) {
-                    NavigationService.switchToTab(index);
-                  },
-                  type: BottomNavigationBarType.fixed,
-                  items: const [
-                    BottomNavigationBarItem(
-                      icon: Icon(Icons.home),
-                      label: '',
-                    ),
-                    BottomNavigationBarItem(
-                      icon: Icon(Icons.check_circle),
-                      label: '',
-                    ),
-                    BottomNavigationBarItem(
-                      icon: Icon(Icons.insights),
-                      label: '',
-                    ),
-                    BottomNavigationBarItem(
-                      icon: Icon(Icons.fitness_center),
-                      label: '',
-                    ),
-                  ],
-                );
-              },
-            ),
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('Атлетика'),
+            actions: const [
+              AvatarDropdown(),
+            ],
           ),
-          routes: {
-            '/workout': (context) => const WorkoutScreen(),
-            '/main': (context) => const MainScreen(),
-          },
-          debugShowCheckedModeBanner: false,
+          body: ValueListenableBuilder<int>(
+            valueListenable: NavigationService.currentIndexNotifier,
+            builder: (context, currentIndex, child) {
+              return _screens[currentIndex];
+            },
+          ),
+          bottomNavigationBar: ValueListenableBuilder<int>(
+            valueListenable: NavigationService.currentIndexNotifier,
+            builder: (context, currentIndex, child) {
+              return BottomNavigationBar(
+                currentIndex: currentIndex,
+                onTap: (index) {
+                  NavigationService.switchToTab(index);
+                },
+                type: BottomNavigationBarType.fixed,
+                items: const [
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.home),
+                    label: 'Главная',
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.check_circle),
+                    label: 'Задачи',
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.insights),
+                    label: 'Аналитика',
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.article),
+                    label: 'Лента',
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.fitness_center),
+                    label: 'Тренировки',
+                  ),
+                ],
+              );
+            },
+          ),
         );
       },
     );

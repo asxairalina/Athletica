@@ -5,7 +5,9 @@ import '../services/supabase_service.dart';
 import '../models/muscle_group.dart';
 import '../models/exercise_video.dart';
 import '../models/supabase_models.dart';
+import '../widgets/star_rating_widget.dart';
 import '../widgets/video_player_widget.dart';
+import 'create_workout_screen.dart';
 
 class _MuscleGroupCategoryData {
   final List<SupabaseMuscleGroup> groups;
@@ -400,6 +402,21 @@ class _WorkoutScreenState extends State<WorkoutScreen> with SingleTickerProvider
     }
   }
 
+  Future<Map<String, dynamic>?> _rateWorkout(TrainerWorkout workout, int rating) async {
+    try {
+      final updatedRating = await SupabaseService().rateTrainerWorkout(workout.id, rating);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Вы поставили ${rating} ${rating == 1 ? 'звезду' : 'звезды'}')),
+      );
+      return updatedRating;
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка сохранения оценки: $e')),
+      );
+      return null;
+    }
+  }
+
   void _showEmptyGroupBottomSheet(BuildContext context, SupabaseMuscleGroup muscleGroup) {
     showModalBottomSheet(
       context: context,
@@ -433,28 +450,10 @@ class _WorkoutScreenState extends State<WorkoutScreen> with SingleTickerProvider
   }
 
   void _showTrainerWorkouts(BuildContext context, List<TrainerWorkout> trainerWorkouts, SupabaseMuscleGroup muscleGroup) {
-    final videos = trainerWorkouts.map((workout) {
-      return ExerciseVideo(
-        id: workout.id,
-        title: workout.title,
-        description: workout.description,
-        videoUrl: workout.videoUrl ?? '',
-        duration: workout.duration * 60,
-        difficulty: workout.difficulty,
-        instructions: [
-          'Длительность: ${workout.duration} минут',
-          'Сложность: ${workout.difficulty}',
-          'Тренер: ${workout.trainerName ?? 'Неизвестный тренер'}',
-        ],
-      );
-    }).toList();
-
-    _showSupabaseVideosBottomSheet(context, videos, muscleGroup);
-  }
-
-  void _showSupabaseVideosBottomSheet(BuildContext context, List<ExerciseVideo> videos, SupabaseMuscleGroup muscleGroup) {
     final color = _colorFromHex(muscleGroup.color);
     final icon = _iconFromName(muscleGroup.icon);
+    final displayedWorkouts = List<TrainerWorkout>.from(trainerWorkouts);
+    var selectedRatingFilter = 0;
 
     showModalBottomSheet(
       context: context,
@@ -463,109 +462,225 @@ class _WorkoutScreenState extends State<WorkoutScreen> with SingleTickerProvider
       builder: (context) => DraggableScrollableSheet(
         initialChildSize: 0.95,
         maxChildSize: 0.98,
-        builder: (context, scrollController) => Container(
-          padding: const EdgeInsets.all(0),
-          child: Column(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: color.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(
-                        icon,
-                        color: color,
-                        size: 24,
-                      ),
+        builder: (context, scrollController) => StatefulBuilder(
+          builder: (context, setState) {
+            final filteredWorkouts = selectedRatingFilter <= 0
+                ? displayedWorkouts
+                : displayedWorkouts.where((workout) => workout.rating >= selectedRatingFilter).toList();
+
+            return Container(
+              padding: const EdgeInsets.all(0),
+              child: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surface,
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: color.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(
+                            icon,
+                            color: color,
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                muscleGroup.name,
+                                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                muscleGroup.description,
+                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          icon: const Icon(Icons.close),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
                         children: [
-                          Text(
-                            muscleGroup.name,
-                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
+                          ChoiceChip(
+                            label: const Text('Все'),
+                            selected: selectedRatingFilter == 0,
+                            onSelected: (_) {
+                              setState(() {
+                                selectedRatingFilter = 0;
+                              });
+                            },
                           ),
-                          Text(
-                            muscleGroup.description,
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
-                            ),
-                          ),
+                          const SizedBox(width: 8),
+                          ...List.generate(5, (index) {
+                            final value = index + 1;
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: ChoiceChip(
+                                label: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text('$value+'),
+                                    const SizedBox(width: 4),
+                                    const Icon(Icons.star, size: 16, color: Colors.amber),
+                                  ],
+                                ),
+                                selected: selectedRatingFilter == value,
+                                onSelected: (_) {
+                                  setState(() {
+                                    selectedRatingFilter = value;
+                                  });
+                                },
+                              ),
+                            );
+                          }),
                         ],
                       ),
                     ),
-                    IconButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: Container(
-                  color: Theme.of(context).colorScheme.surface,
-                  child: ListView.builder(
-                    controller: scrollController,
-                    itemCount: videos.length,
-                    itemBuilder: (context, index) {
-                      final video = videos[index];
-                      return Card(
-                        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        child: ListTile(
-                          contentPadding: const EdgeInsets.all(16),
-                          leading: Container(
-                            width: 60,
-                            height: 60,
-                            decoration: BoxDecoration(
-                              color: color.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Icon(
-                              Icons.play_circle,
-                              color: color,
-                              size: 30,
-                            ),
-                          ),
-                          title: Text(
-                            video.title,
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const SizedBox(height: 8),
-                              Text(video.description),
-                              const SizedBox(height: 8),
-                              Text('Длительность: ${video.duration ~/ 60} мин'),
-                            ],
-                          ),
-                          onTap: () {
-                            Navigator.of(context).pop();
-                            _showVideoPlayer(context, video);
-                          },
-                        ),
-                      );
-                    },
                   ),
-                ),
+                  Expanded(
+                    child: Container(
+                      color: Theme.of(context).colorScheme.surface,
+                      child: filteredWorkouts.isEmpty
+                          ? Center(
+                              child: Padding(
+                                padding: const EdgeInsets.all(24),
+                                child: Text(
+                                  'Нет тренировок с рейтингом $selectedRatingFilter и выше.',
+                                  style: Theme.of(context).textTheme.bodyMedium,
+                                ),
+                              ),
+                            )
+                          : ListView.builder(
+                              controller: scrollController,
+                              itemCount: filteredWorkouts.length,
+                              itemBuilder: (context, index) {
+                                final workout = filteredWorkouts[index];
+                                return Card(
+                                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                  child: ListTile(
+                                    contentPadding: const EdgeInsets.all(16),
+                                    leading: Container(
+                                      width: 60,
+                                      height: 60,
+                                      decoration: BoxDecoration(
+                                        color: color.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Icon(
+                                        Icons.fitness_center,
+                                        color: color,
+                                        size: 30,
+                                      ),
+                                    ),
+                                    title: Text(
+                                      workout.title,
+                                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    subtitle: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const SizedBox(height: 8),
+                                        Text(workout.description),
+                                        const SizedBox(height: 8),
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            StarRating(
+                                              rating: workout.rating,
+                                              onRatingChanged: (rating) async {
+                                                final workoutIndex = displayedWorkouts.indexWhere((w) => w.id == workout.id);
+                                                if (workoutIndex < 0) return;
+                                                final updatedRating = await _rateWorkout(workout, rating);
+                                                if (updatedRating == null) return;
+                                                setState(() {
+                                                  displayedWorkouts[workoutIndex] = displayedWorkouts[workoutIndex].copyWith(
+                                                    rating: updatedRating['rating'] as double,
+                                                    ratingCount: updatedRating['rating_count'] as int,
+                                                  );
+                                                });
+                                              },
+                                            ),
+                                            Text(
+                                              workout.ratingCount > 0
+                                                  ? '${workout.rating.toStringAsFixed(1)} (${workout.ratingCount})'
+                                                  : 'Нет оценок',
+                                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                                                  ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          'Длительность: ${workout.duration} мин • Сложность: ${workout.difficulty}',
+                                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                                              ),
+                                        ),
+                                      ],
+                                    ),
+                                    onTap: () {
+                                      Navigator.of(context).pop();
+                                      Future.microtask(() {
+                                        if (workout.videoUrl.isNotEmpty) {
+                                          final video = ExerciseVideo(
+                                            id: workout.id,
+                                            title: workout.title,
+                                            description: workout.description,
+                                            videoUrl: workout.videoUrl,
+                                            duration: workout.duration * 60,
+                                            difficulty: workout.difficulty,
+                                            instructions: [
+                                              'Длительность: ${workout.duration} минут',
+                                              'Сложность: ${workout.difficulty}',
+                                            ],
+                                          );
+                                          _showVideoPlayer(context, video);
+                                        } else {
+                                          Navigator.of(context).push(
+                                            MaterialPageRoute(
+                                              builder: (c) => CreateWorkoutScreen(workout: workout),
+                                            ),
+                                          );
+                                        }
+                                      });
+                                    },
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
@@ -755,6 +870,117 @@ class _WorkoutScreenState extends State<WorkoutScreen> with SingleTickerProvider
     );
   }
 
+  void _showSupabaseVideosBottomSheet(BuildContext context, List<ExerciseVideo> videos, dynamic muscleGroup) {
+    // Supabase muscle group uses simple fields (color as hex string, icon as name)
+    final color = muscleGroup != null && muscleGroup.color != null
+        ? _colorFromHex(muscleGroup.color as String)
+        : Theme.of(context).colorScheme.primary;
+    final icon = muscleGroup != null && muscleGroup.icon != null
+        ? _iconFromName(muscleGroup.icon as String)
+        : Icons.fitness_center;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.95,
+        maxChildSize: 0.98,
+        builder: (context, scrollController) => Container(
+          padding: const EdgeInsets.all(0),
+          child: Column(
+            children: [
+              // Header
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: color.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        icon,
+                        color: color,
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            muscleGroup?.name ?? 'Видео',
+                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            muscleGroup?.description ?? '',
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Video list
+              Expanded(
+                child: Container(
+                  color: Theme.of(context).colorScheme.surface,
+                  child: ListView.builder(
+                    controller: scrollController,
+                    itemCount: videos.length,
+                    itemBuilder: (context, index) {
+                      final video = videos[index];
+                      return Card(
+                        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.all(12),
+                          leading: Container(
+                            width: 56,
+                            height: 56,
+                            decoration: BoxDecoration(
+                              color: color.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(Icons.play_circle_fill, color: color, size: 36),
+                          ),
+                          title: Text(video.title),
+                          subtitle: Text(video.description ?? ''),
+                          onTap: () {
+                            Navigator.of(context).pop();
+                            _showVideoPlayer(context, video);
+                          },
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Color _getDifficultyColor(String difficulty) {
     switch (difficulty) {
       case 'Легкий':
@@ -850,7 +1076,23 @@ class _WorkoutScreenState extends State<WorkoutScreen> with SingleTickerProvider
               'Выпить воды',
               'Стакан воды (250мл)',
               Icons.local_drink,
-              () => ProgressService.addWaterIntake(),
+              () async {
+                try {
+                  await SupabaseService().logWaterIntake(250);
+                  ProgressService.addWaterIntake();
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Стакан воды добавлен')),
+                    );
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Ошибка записи воды: $e')),
+                    );
+                  }
+                }
+              },
             ),
             const SizedBox(height: 8),
             _buildTrackingItem(
@@ -858,7 +1100,23 @@ class _WorkoutScreenState extends State<WorkoutScreen> with SingleTickerProvider
               'Добавить шаги',
               '1000 шагов',
               Icons.directions_walk,
-              () => ProgressService.addSteps(1000),
+              () async {
+                try {
+                  await SupabaseService().logSteps(1000);
+                  ProgressService.addSteps(1000);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('1000 шагов добавлено')),
+                    );
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Ошибка записи шагов: $e')),
+                    );
+                  }
+                }
+              },
             ),
           ],
         ),
@@ -894,12 +1152,12 @@ class _WorkoutScreenState extends State<WorkoutScreen> with SingleTickerProvider
     if (originalUrl.contains('example.com')) {
       // Реальные YouTube видео для фитнеса
       final demoUrls = {
-        'massage': 'https://www.youtube.com/watch?v=j1Ia2rM_UvI', // Массаж спины
-        'gymnastics': 'https://www.youtube.com/watch?v=VHG2c9h7t3E', // Базовая гимнастика
-        'reflexes': 'https://www.youtube.com/watch?v=KXKjGqZjKkM', // Развитие рефлексов
-        'water': 'https://www.youtube.com/watch?v=0hP1KvQz1k8', // Водные процедуры
-        'chest': 'https://www.youtube.com/watch?v=IODxDxX7oi4', // Отжимания для грудных
-        'back': 'https://www.youtube.com/watch?v=eGo4IYlbE5g', // Упражнения для спины
+        'massage': 'https://www.youtube.com/watch?v=j1Ia2rM_UvI', 
+        'gymnastics': 'https://www.youtube.com/watch?v=VHG2c9h7t3E',
+        'reflexes': 'https://www.youtube.com/watch?v=KXKjGqZjKkM', 
+        'water': 'https://www.youtube.com/watch?v=0hP1KvQz1k8', 
+        'chest': 'https://www.youtube.com/watch?v=IODxDxX7oi4',
+        'back': 'https://www.youtube.com/watch?v=eGo4IYlbE5g', 
       };
       
       // Ищем ключевые слова в URL и возвращаем соответствующее видео
@@ -908,8 +1166,6 @@ class _WorkoutScreenState extends State<WorkoutScreen> with SingleTickerProvider
           return demoUrls[key]!;
         }
       }
-      
-      // По умолчанию возвращаем видео массажа
       return demoUrls['massage']!;
     }
     
@@ -917,7 +1173,6 @@ class _WorkoutScreenState extends State<WorkoutScreen> with SingleTickerProvider
   }
 
   void _showVideoPlayer(BuildContext context, ExerciseVideo video) {
-    // Всегда используем внутренний плеер без перехода на сторонние источники
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => VideoPlayerWidget(video: video),

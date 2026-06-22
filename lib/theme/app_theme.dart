@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
   static ThemeData get lightTheme {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.light,
+      fontFamily: GoogleFonts.notoSans().fontFamily,
       colorScheme: ColorScheme.fromSeed(
         seedColor: Colors.blue,
         brightness: Brightness.light,
@@ -18,11 +20,11 @@ class AppTheme {
         onBackground: Colors.black87,
       ),
       scaffoldBackgroundColor: Colors.white,
-      appBarTheme: const AppBarTheme(
+      appBarTheme: AppBarTheme(
         backgroundColor: Colors.white,
         foregroundColor: Colors.black87,
         elevation: 0,
-        titleTextStyle: TextStyle(
+        titleTextStyle: GoogleFonts.notoSans(
           color: Colors.black87,
           fontSize: 20,
           fontWeight: FontWeight.bold,
@@ -47,6 +49,7 @@ class AppTheme {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
+      fontFamily: GoogleFonts.notoSans().fontFamily,
       colorScheme: ColorScheme.fromSeed(
         seedColor: Colors.blue,
         brightness: Brightness.dark,
@@ -60,11 +63,11 @@ class AppTheme {
         onBackground: Colors.white,
       ),
       scaffoldBackgroundColor: Colors.black,
-      appBarTheme: const AppBarTheme(
+      appBarTheme: AppBarTheme(
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         elevation: 0,
-        titleTextStyle: TextStyle(
+        titleTextStyle: GoogleFonts.notoSans(
           color: Colors.white,
           fontSize: 20,
           fontWeight: FontWeight.bold,

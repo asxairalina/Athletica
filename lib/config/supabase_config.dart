@@ -1,8 +1,8 @@
 class SupabaseConfig {
   
-  static const String supabaseUrl = 'url проекта супабейз';
+  static const String supabaseUrl = 'https://qomalcidofhankteklbc.supabase.co';
 
-  static const String supabaseAnonKey = 'settings- API keys - Legacy... - anon public';
+  static const String supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFvbWFsY2lkb2ZoYW5rdGVrbGJjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzNDE0MTUsImV4cCI6MjA5NjkxNzQxNX0.YWnoAlpA-L6Xhdqn5-vNw_F0elFQf3YYoG7MbRPjKsM';
 
   static const String usersTable = 'users';
   static const String dailyTasksTable = 'daily_tasks';

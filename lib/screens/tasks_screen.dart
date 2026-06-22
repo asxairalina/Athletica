@@ -21,7 +21,6 @@ class _TasksScreenState extends State<TasksScreen> {
   void initState() {
     super.initState();
     _loadDailyTasks();
-    // Обновляем задачи каждые 3 секунды, чтобы отловить завершение тренировок
     _refreshTimer = Timer.periodic(const Duration(seconds: 3), (_) {
       if (mounted) _refreshTasks();
     });

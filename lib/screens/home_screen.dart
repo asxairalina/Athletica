@@ -18,11 +18,26 @@ class _HomeScreenState extends State<HomeScreen> {
   int _todayWorkoutCount = 0;
   int _todayCalories = 0;
   int _todayMinutes = 0;
+  int _todayWaterIntake = 0;
+  int _todaySteps = 0;
 
   @override
   void initState() {
     super.initState();
     _loadUserData();
+    NavigationService.addListener(_onTabChanged);
+  }
+
+  void _onTabChanged() {
+    if (NavigationService.currentIndexNotifier.value == 0 && mounted) {
+      _loadUserData();
+    }
+  }
+
+  @override
+  void dispose() {
+    NavigationService.removeListener(_onTabChanged);
+    super.dispose();
   }
 
   bool _isSameLocalDay(DateTime a, DateTime b) {
@@ -94,12 +109,24 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
+    int todayWater = 0;
+    int todaySteps = 0;
+    try {
+      final todayProgress = await SupabaseService().getTodayProgress();
+      todayWater = (todayProgress['water_intake'] as int?) ?? 0;
+      todaySteps = (todayProgress['steps_taken'] as int?) ?? 0;
+    } catch (e) {
+      print('Error loading today progress: $e');
+    }
+
     if (mounted) {
       setState(() {
         _currentUser = effectiveUser;
         _todayWorkoutCount = todayCount;
         _todayCalories = todayCalories;
         _todayMinutes = todayMinutes;
+        _todayWaterIntake = todayWater;
+        _todaySteps = todaySteps;
         _isLoading = false;
       });
     }
@@ -179,9 +206,12 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        Row(
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
           children: [
-            Expanded(
+            SizedBox(
+              width: MediaQuery.of(context).size.width / 2 - 24,
               child: _buildStatCard(
                 context,
                 'Калории',
@@ -191,8 +221,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 Colors.orange,
               ),
             ),
-            const SizedBox(width: 12),
-            Expanded(
+            SizedBox(
+              width: MediaQuery.of(context).size.width / 2 - 24,
               child: _buildStatCard(
                 context,
                 'Время',
@@ -202,8 +232,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 Colors.blue,
               ),
             ),
-            const SizedBox(width: 12),
-            Expanded(
+            SizedBox(
+              width: MediaQuery.of(context).size.width / 2 - 24,
               child: _buildStatCard(
                 context,
                 'Тренировки',
@@ -211,6 +241,28 @@ class _HomeScreenState extends State<HomeScreen> {
                 'шт',
                 Icons.fitness_center,
                 Colors.green,
+              ),
+            ),
+            SizedBox(
+              width: MediaQuery.of(context).size.width / 2 - 24,
+              child: _buildStatCard(
+                context,
+                'Вода',
+                _todayWaterIntake.toString(),
+                'мл',
+                Icons.water,
+                Colors.cyan,
+              ),
+            ),
+            SizedBox(
+              width: MediaQuery.of(context).size.width / 2 - 24,
+              child: _buildStatCard(
+                context,
+                'Шаги',
+                _todaySteps.toString(),
+                '',
+                Icons.directions_walk,
+                Colors.teal,
               ),
             ),
           ],
@@ -274,7 +326,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 'Начать тренировку',
                 Icons.play_arrow,
                 () {
-                  NavigationService.switchToTab(3);
+                  NavigationService.switchToTab(4);
                 },
                 Theme.of(context).colorScheme.primary,
               ),
@@ -372,7 +424,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('Вес $weight кг записан!')),
                   );
-                  // Обновляем данные пользователя
                   _loadUserData();
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(

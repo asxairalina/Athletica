@@ -5,6 +5,7 @@ import 'package:video_player/video_player.dart';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 import 'package:rutube_videoplayer/rutube_videoplayer.dart';
 import '../models/exercise_video.dart';
+import '../models/supabase_models.dart';
 import '../services/supabase_service.dart';
 import '../services/progress_service.dart';
 
@@ -37,10 +38,19 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
   bool _workoutSaved = false;
   bool _youtubeReady = false;
 
+  final TextEditingController _commentController = TextEditingController();
+  final List<WorkoutComment> _comments = [];
+  int _commentPage = 1;
+  static const int _commentsPageSize = 10;
+  bool _isLoadingComments = false;
+  bool _isSubmittingComment = false;
+  String _commentError = '';
+
   @override
   void initState() {
     super.initState();
     _initializePlayer();
+    _loadComments();
   }
 
   void _initializePlayer() {
@@ -216,6 +226,7 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
     _saveWorkoutOnExit();
     _uiTimer?.cancel();
     _workoutStopwatch.stop();
+    _commentController.dispose();
     _videoController?.removeListener(_onVideoPlayerUpdate);
     _videoController?.dispose();
     _youtubeController?.dispose();
@@ -267,6 +278,178 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
       kcalPerMinute = 5;
     }
     return duration.inMinutes * kcalPerMinute;
+  }
+
+  Future<void> _loadComments({int page = 1}) async {
+    setState(() {
+      _isLoadingComments = true;
+      _commentError = '';
+    });
+
+    try {
+      final comments = await SupabaseService().getWorkoutComments(
+        widget.video.id,
+        page: page,
+        pageSize: _commentsPageSize,
+      );
+      setState(() {
+        _commentPage = page;
+        _comments.clear();
+        _comments.addAll(comments);
+      });
+    } catch (e) {
+      setState(() {
+        _commentError = 'Ошибка загрузки комментариев';
+      });
+    } finally {
+      setState(() {
+        _isLoadingComments = false;
+      });
+    }
+  }
+
+  Future<void> _postComment() async {
+    final text = _commentController.text.trim();
+    if (text.isEmpty) return;
+
+    setState(() {
+      _isSubmittingComment = true;
+      _commentError = '';
+    });
+
+    try {
+      await SupabaseService().createWorkoutComment(widget.video.id, text);
+      _commentController.clear();
+      await _loadComments(page: 1);
+    } catch (e) {
+      setState(() {
+        _commentError = 'Не удалось отправить комментарий: ${e.toString()}';
+      });
+    } finally {
+      setState(() {
+        _isSubmittingComment = false;
+      });
+    }
+  }
+
+  Future<void> _finishWorkout() async {
+    if (!_workoutStarted) return;
+    _uiTimer?.cancel();
+    _workoutStopwatch.stop();
+
+    await _saveWorkoutOnExit();
+
+    setState(() {
+      _workoutStarted = false;
+    });
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Тренировка сохранена')),
+      );
+    }
+  }
+
+  Widget _buildCommentsSection(ThemeData theme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Комментарии',
+          style: theme.textTheme.titleMedium?.copyWith(
+            color: theme.colorScheme.onBackground,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (_isLoadingComments)
+          Center(
+            child: CircularProgressIndicator(color: theme.colorScheme.primary),
+          )
+        else if (_commentError.isNotEmpty)
+          Text(
+            _commentError,
+            style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.error),
+          )
+        else if (_comments.isEmpty)
+          Text(
+            'Пока нет комментариев. Оставьте первый!',
+            style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onBackground.withOpacity(0.75)),
+          )
+        else
+          Column(
+            children: _comments.map((comment) {
+              final author = comment.userName ?? comment.userId;
+              final created = comment.createdAt.toLocal();
+              final createdAtText = '${created.day.toString().padLeft(2, '0')}.${created.month.toString().padLeft(2, '0')} ${created.hour.toString().padLeft(2, '0')}:${created.minute.toString().padLeft(2, '0')}';
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          author,
+                          style: theme.textTheme.bodyLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.onSurface,
+                          ),
+                        ),
+                        Text(
+                          createdAtText,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurface.withOpacity(0.7),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      comment.text,
+                      style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurface.withOpacity(0.9)),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+          ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _commentController,
+          minLines: 1,
+          maxLines: 4,
+          decoration: InputDecoration(
+            labelText: 'Новый комментарий',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: ElevatedButton(
+                onPressed: _isSubmittingComment ? null : _postComment,
+                child: _isSubmittingComment
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Text('Отправить'),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
   }
 
   void _startWorkout() {
@@ -409,44 +592,51 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
       );
     }
 
+    final theme = Theme.of(context);
+    final backgroundColor = theme.scaffoldBackgroundColor;
+    final surfaceColor = theme.colorScheme.surface;
+    final onSurface = theme.colorScheme.onSurface;
+
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: backgroundColor,
       appBar: AppBar(
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: Icon(Icons.arrow_back, color: onSurface),
           onPressed: () async {
             await _saveWorkoutOnExit();
             if (mounted) Navigator.of(context).pop();
           },
         ),
-        backgroundColor: Colors.black87,
+        backgroundColor: surfaceColor,
         title: Text(
           widget.video.title,
-          style: const TextStyle(color: Colors.white, fontSize: 16),
+          style: theme.textTheme.titleMedium?.copyWith(color: onSurface),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
-        iconTheme: const IconThemeData(color: Colors.white),
+        iconTheme: IconThemeData(color: onSurface),
         actions: [
           if ((_videoController != null && _videoController!.value.isInitialized) ||
               _youtubeController != null)
             IconButton(
               icon: Icon(
                 _isPlaying ? Icons.pause : Icons.play_arrow,
-                color: Colors.white,
+                color: onSurface,
               ),
               onPressed: _togglePlayPause,
             ),
         ],
       ),
       body: _isLoading
-          ? const Center(
+          ? Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  CircularProgressIndicator(color: Colors.white),
-                  SizedBox(height: 16),
+                  CircularProgressIndicator(color: theme.colorScheme.primary),
+                  const SizedBox(height: 16),
                   Text(
                     'Загрузка видео...',
-                    style: TextStyle(color: Colors.white70),
+                    style: theme.textTheme.bodyMedium?.copyWith(color: onSurface.withOpacity(0.7)),
                   ),
                 ],
               ),
@@ -458,11 +648,11 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.error_outline, color: Colors.red, size: 48),
+                        Icon(Icons.error_outline, color: theme.colorScheme.error, size: 48),
                         const SizedBox(height: 16),
                         Text(
                           _errorMessage,
-                          style: const TextStyle(color: Colors.white),
+                          style: theme.textTheme.bodyMedium?.copyWith(color: onSurface),
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 24),
@@ -548,29 +738,36 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
                     ),
                     if (_videoController != null && _videoController!.value.isInitialized)
                       _buildVideoControls(),
-                    if (!_workoutStarted)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        child: ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.red,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(32),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: _workoutStarted ? theme.colorScheme.error : theme.colorScheme.primary,
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(32),
+                                ),
+                              ),
+                              onPressed: _workoutStarted ? _finishWorkout : _startWorkout,
+                              icon: Icon(
+                                _workoutStarted ? Icons.check : Icons.play_arrow,
+                                color: theme.colorScheme.onPrimary,
+                              ),
+                              label: Text(
+                                _workoutStarted ? 'Завершить тренировку' : 'Начать тренировку',
+                                style: theme.textTheme.labelLarge?.copyWith(
+                                  color: theme.colorScheme.onPrimary,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                             ),
                           ),
-                          onPressed: _startWorkout,
-                          icon: const Icon(Icons.play_arrow, color: Colors.white),
-                          label: const Text(
-                            'Начать тренировку',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
+                        ],
                       ),
+                    ),
                     Expanded(
                       child: SingleChildScrollView(
                         padding: const EdgeInsets.all(16),
@@ -579,19 +776,12 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
                           children: [
                             Text(
                               widget.video.title,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                              ),
+                              style: theme.textTheme.headlineSmall?.copyWith(color: onSurface, fontWeight: FontWeight.bold),
                             ),
                             const SizedBox(height: 8),
                             Text(
                               widget.video.description,
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 14,
-                              ),
+                              style: theme.textTheme.bodyMedium?.copyWith(color: onSurface.withOpacity(0.8)),
                             ),
                             const SizedBox(height: 16),
                             Row(
@@ -599,45 +789,33 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                   decoration: BoxDecoration(
-                                    color: Colors.blue.withOpacity(0.2),
+                                    color: theme.colorScheme.primary.withOpacity(0.16),
                                     borderRadius: BorderRadius.circular(16),
                                   ),
                                   child: Text(
                                     widget.video.difficulty,
-                                    style: const TextStyle(
-                                      color: Colors.blue,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                    ),
+                                    style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.primary, fontWeight: FontWeight.bold),
                                   ),
                                 ),
                                 const SizedBox(width: 12),
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                   decoration: BoxDecoration(
-                                    color: Colors.green.withOpacity(0.2),
+                                    color: theme.colorScheme.secondary.withOpacity(0.16),
                                     borderRadius: BorderRadius.circular(16),
                                   ),
                                   child: Text(
                                     '${(widget.video.duration ~/ 60)}:${(widget.video.duration % 60).toString().padLeft(2, '0')}',
-                                    style: const TextStyle(
-                                      color: Colors.green,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                    ),
+                                    style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.secondary, fontWeight: FontWeight.bold),
                                   ),
                                 ),
                               ],
                             ),
                             const SizedBox(height: 16),
                             if (widget.video.instructions.isNotEmpty) ...[
-                              const Text(
+                              Text(
                                 'Инструкции:',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                                style: theme.textTheme.titleMedium?.copyWith(color: onSurface, fontWeight: FontWeight.bold),
                               ),
                               const SizedBox(height: 8),
                               ...widget.video.instructions.asMap().entries.map((entry) {
@@ -649,18 +827,14 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
                                       Container(
                                         width: 24,
                                         height: 24,
-                                        decoration: const BoxDecoration(
-                                          color: Colors.blue,
+                                        decoration: BoxDecoration(
+                                          color: theme.colorScheme.primary,
                                           shape: BoxShape.circle,
                                         ),
                                         child: Center(
                                           child: Text(
                                             '${entry.key + 1}',
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 12,
-                                            ),
+                                            style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onPrimary, fontWeight: FontWeight.bold),
                                           ),
                                         ),
                                       ),
@@ -668,10 +842,7 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
                                       Expanded(
                                         child: Text(
                                           entry.value,
-                                          style: const TextStyle(
-                                            color: Colors.white70,
-                                            fontSize: 14,
-                                          ),
+                                          style: theme.textTheme.bodyMedium?.copyWith(color: onSurface.withOpacity(0.8)),
                                         ),
                                       ),
                                     ],
@@ -679,6 +850,8 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
                                 );
                               }).toList(),
                             ],
+                            const SizedBox(height: 24),
+                            _buildCommentsSection(theme),
                           ],
                         ),
                       ),

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/supabase_service.dart';
-import 'profile_setup_screen.dart';
 import 'email_confirmation_screen.dart';
 
 class AuthScreen extends StatefulWidget {
@@ -30,7 +29,7 @@ class _AuthScreenState extends State<AuthScreen> {
   Future<void> _authenticate() async {
     if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
       setState(() {
-        _errorMessage = 'Please fill in all fields';
+        _errorMessage = 'Пожалуйста, заполните все поля';
       });
       return;
     }
@@ -51,12 +50,12 @@ class _AuthScreenState extends State<AuthScreen> {
         );
         
         if (response.user == null) {
-          throw Exception('Login failed');
+          throw Exception('Ошибка входа. Проверьте email и пароль');
         }
       } else {
         // Регистрация
         if (_nameController.text.isEmpty) {
-          throw Exception('Name is required for registration');
+          throw Exception('Пожалуйста, укажите имя при регистрации');
         }
 
         final response = await supabase.auth.signUp(
@@ -84,7 +83,7 @@ class _AuthScreenState extends State<AuthScreen> {
             );
           }
         } else {
-          throw Exception('Registration failed');
+          throw Exception('Ошибка регистрации. Попробуйте еще раз');
         }
       }
     } catch (e) {
@@ -115,7 +114,7 @@ class _AuthScreenState extends State<AuthScreen> {
               ),
               const SizedBox(height: 16),
               Text(
-                'Athletica',
+                'Атлетика',
                 style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                   fontWeight: FontWeight.bold,
                   color: Theme.of(context).colorScheme.primary,
@@ -123,7 +122,7 @@ class _AuthScreenState extends State<AuthScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                'Your Personal Fitness Companion',
+                'Ваш персональный фитнес-помощник',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
                 ),
@@ -140,7 +139,7 @@ class _AuthScreenState extends State<AuthScreen> {
                         TextField(
                           controller: _nameController,
                           decoration: const InputDecoration(
-                            labelText: 'Name',
+                            labelText: 'Имя',
                             prefixIcon: Icon(Icons.person),
                           ),
                         ),
@@ -149,7 +148,7 @@ class _AuthScreenState extends State<AuthScreen> {
                       TextField(
                         controller: _emailController,
                         decoration: const InputDecoration(
-                          labelText: 'Email',
+                          labelText: 'Электронная почта',
                           prefixIcon: Icon(Icons.email),
                         ),
                         keyboardType: TextInputType.emailAddress,
@@ -158,7 +157,7 @@ class _AuthScreenState extends State<AuthScreen> {
                       TextField(
                         controller: _passwordController,
                         decoration: const InputDecoration(
-                          labelText: 'Password',
+                          labelText: 'Пароль',
                           prefixIcon: Icon(Icons.lock),
                         ),
                         obscureText: true,
@@ -195,7 +194,7 @@ class _AuthScreenState extends State<AuthScreen> {
                           ),
                           child: _isLoading
                               ? const CircularProgressIndicator(color: Colors.white)
-                              : Text(_isLogin ? 'Sign In' : 'Sign Up'),
+                              : Text(_isLogin ? 'Войти' : 'Зарегистрироваться'),
                         ),
                       ),
                     ],
@@ -214,8 +213,8 @@ class _AuthScreenState extends State<AuthScreen> {
                 },
                 child: Text(
                   _isLogin 
-                      ? "Don't have an account? Sign Up"
-                      : "Already have an account? Sign In",
+                      ? 'Нет аккаунта? Зарегистрироваться'
+                      : 'Уже есть аккаунт? Войти',
                 ),
               ),
             ],

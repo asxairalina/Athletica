@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../services/supabase_service.dart';
+import '../models/supabase_models.dart';
+import '../widgets/profile_avatar.dart';
+import '../services/navigation_service.dart';
 
 class AnalyticsScreen extends StatefulWidget {
   const AnalyticsScreen({super.key});
@@ -10,7 +13,9 @@ class AnalyticsScreen extends StatefulWidget {
   State<AnalyticsScreen> createState() => _AnalyticsScreenState();
 }
 
-class _AnalyticsScreenState extends State<AnalyticsScreen> {
+class _AnalyticsScreenState extends State<AnalyticsScreen> with TickerProviderStateMixin {
+  late TabController _tabController;
+  
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
   Map<DateTime, int> _activityMap = {};
@@ -20,11 +25,31 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   List<Map<String, dynamic>> _weightHistory = [];
   List<Map<String, dynamic>> _monthlyWorkoutCounts = [];
 
+  Map<String, dynamic>? _familyProgress;
+  Future<Family?>? _familyFuture;
+
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
     _selectedDay = _focusedDay;
     _loadAnalyticsData();
+    _familyFuture = _loadFamily();
+    NavigationService.addListener(_onTabChanged);
+  }
+
+  @override
+  void dispose() {
+    NavigationService.removeListener(_onTabChanged);
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  void _onTabChanged() {
+    if (NavigationService.currentIndexNotifier.value == 2) {
+      _loadAnalyticsData();
+      _familyFuture = _loadFamily();
+    }
   }
 
   Future<void> _loadAnalyticsData() async {
@@ -86,6 +111,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       final totalCalories = recentWorkouts.fold<num>(0, (sum, w) => sum + (w['calories'] ?? 0)).toInt();
       final avgDuration = totalWorkouts > 0 ? (totalDuration / totalWorkouts / 60).round() : 0;
       
+      final monthlyAverages = await SupabaseService().getMonthlyAverageWaterAndSteps();
+      final avgWater = monthlyAverages['avgWater'] as int? ?? 0;
+      final avgSteps = monthlyAverages['avgSteps'] as int? ?? 0;
+      
       // Вычисляем персональные рекорды по истории тренировок
       final longestWorkoutSeconds = workoutHistory.fold<int>(0, (max, w) {
         final duration = w['duration'] is int ? w['duration'] as int : int.tryParse(w['duration']?.toString() ?? '0') ?? 0;
@@ -98,6 +127,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       });
       final totalWorkoutCount = workoutHistory.length;
       
+      if (!mounted) return;
       setState(() {
         _activityMap = activityMap;
         _weightHistory = parsedWeightHistory;
@@ -107,6 +137,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           'totalDuration': (totalDuration / 60).round(), // конвертируем в минуты
           'totalCalories': totalCalories,
           'avgDuration': avgDuration,
+          'avgWater': avgWater,
+          'avgSteps': avgSteps,
         };
         _records = {
           'longest_workout': '${longestWorkoutMinutes} мин',
@@ -118,13 +150,33 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     } catch (e) {
       print('Error loading analytics data: $e');
       // В случае ошибки показываем пустые данные
+      if (!mounted) return;
       setState(() {
         _activityMap = {};
-        _stats = {'totalWorkouts': 0, 'totalDuration': 0, 'totalCalories': 0, 'avgDuration': 0};
+        _stats = {
+          'totalWorkouts': 0,
+          'totalDuration': 0,
+          'totalCalories': 0,
+          'avgDuration': 0,
+          'avgWater': 0,
+          'avgSteps': 0,
+        };
         _records = {};
         _currentStreak = 0;
       });
     }
+  }
+
+  Future<void> _loadFamilyProgress() async {
+    final family = await SupabaseService().getUserFamily();
+    if (family == null) return;
+
+    final progress = await SupabaseService().getFamilyProgress(family.id);
+    
+    if (!mounted) return;
+    setState(() {
+      _familyProgress = progress;
+    });
   }
   
   int _calculateCurrentStreak(List<Map<String, dynamic>> workoutHistory) {
@@ -174,57 +226,383 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SingleChildScrollView(
+      appBar: AppBar(
+        title: const Text('Аналитика'),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: 'Мой прогресс'),
+            Tab(text: 'Моя семья'),
+          ],
+        ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          // Вкладка "Мой прогресс"
+          SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildStreakCard(),
+                const SizedBox(height: 16),
+                _buildCalendar(),
+                const SizedBox(height: 24),
+                _buildStatsCards(),
+                const SizedBox(height: 24),
+                _buildCharts(),
+                const SizedBox(height: 24),
+                _buildRecords(),
+              ],
+            ),
+          ),
+          // Вкладка "Моя семья"
+          _buildFamilyTab(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFamilyTab() {
+    return FutureBuilder<Family?>(
+      key: ValueKey(_familyProgress),
+      future: _familyFuture ??= _loadFamily(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (snapshot.data == null) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.group,
+                  size: 64,
+                  color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'У вас еще нет семейной группы',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Создайте семейную группу, чтобы\nслеживать прогресс вместе',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton.icon(
+                  onPressed: () => _showCreateFamilyDialog(context),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Создать группу'),
+                ),
+              ],
+            ),
+          );
+        }
+
+        final family = snapshot.data as Family?;
+        if (family == null) return const SizedBox.shrink();
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                family.name,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 16),
+              if (_familyProgress != null) ...[
+                _buildFamilyProgressCard(),
+                const SizedBox(height: 16),
+                _buildFamilyMembersCard(family.id),
+              ],
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: () => _showAddMemberDialog(context, family.id),
+                icon: const Icon(Icons.person_add),
+                label: const Text('Добавить участника'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<Family?> _loadFamily() async {
+    final family = await SupabaseService().getUserFamily();
+    if (family != null) {
+      _loadFamilyProgress();
+    }
+    return family;
+  }
+
+  Widget _buildFamilyProgressCard() {
+    if (_familyProgress == null) return const SizedBox.shrink();
+
+    final totalSteps = _familyProgress!['totalSteps'] as int? ?? 0;
+    final totalWorkouts = _familyProgress!['totalWorkouts'] as int? ?? 0;
+
+    return Card(
+      child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildHeader(context),
-            const SizedBox(height: 24),
-            _buildStreakCard(),
+            Text(
+              'Прогресс семьи',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
             const SizedBox(height: 16),
-            _buildCalendar(),
-            const SizedBox(height: 24),
-            _buildStatsCards(),
-            const SizedBox(height: 24),
-            _buildCharts(),
-            const SizedBox(height: 24),
-            _buildRecords(),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                Column(
+                  children: [
+                    Icon(
+                      Icons.directions_walk,
+                      color: Theme.of(context).colorScheme.primary,
+                      size: 32,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      totalSteps.toString(),
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      'шагов',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+                Column(
+                  children: [
+                    Icon(
+                      Icons.fitness_center,
+                      color: Theme.of(context).colorScheme.secondary,
+                      size: 32,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      totalWorkouts.toString(),
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      'тренировок',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
-    return Row(
-      children: [
-        Icon(
-          Icons.analytics,
-          size: 40,
-          color: Theme.of(context).colorScheme.primary,
-        ),
-        const SizedBox(width: 12),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Аналитика',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+  Widget _buildFamilyMembersCard(String familyId) {
+    return FutureBuilder(
+      future: SupabaseService().getFamilyMembers(familyId),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final members = snapshot.data ?? [];
+
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Участники (${members.length})',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ...members.map((member) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Row(
+                    children: [
+                      ProfileAvatar(
+                      avatarUrl: member.avatarPath,
+                      displayName: member.userName ?? member.userEmail ?? 'У',
+                      radius: 20,
+                    ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              member.userName ?? member.userEmail ?? 'Участник',
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            Text(
+                              member.role == 'owner' ? 'Владелец' : 'Участник',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                )).toList(),
+              ],
             ),
-            Text(
-              'Ваша статистика и прогресс',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
-              ),
-            ),
-          ],
-        ),
-      ],
+          ),
+        );
+      },
     );
   }
+
+  void _showCreateFamilyDialog(BuildContext context) {
+    final controller = TextEditingController();
+    bool isLoading = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (BuildContext innerDialogContext, setDialogState) {
+          return AlertDialog(
+            title: const Text('Создать семейную группу'),
+            content: TextField(
+              controller: controller,
+              enabled: !isLoading,
+              onChanged: (_) => setDialogState(() {}),
+              decoration: const InputDecoration(
+                hintText: 'Название группы',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: isLoading ? null : () => Navigator.of(dialogContext).pop(),
+                child: const Text('Отмена'),
+              ),
+              ElevatedButton(
+                onPressed: isLoading || controller.text.isEmpty
+                    ? null
+                    : () async {
+                        setDialogState(() => isLoading = true);
+                        try {
+                          await SupabaseService().createFamily(controller.text);
+                          if (!dialogContext.mounted) return;
+                          Navigator.of(dialogContext).pop();
+                          setState(() {
+                            _familyProgress = null;
+                            _familyFuture = _loadFamily();
+                          });
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Семейная группа создана')),
+                          );
+                        } catch (e) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Ошибка: $e')),
+                          );
+                          setDialogState(() => isLoading = false);
+                        }
+                      },
+                child: isLoading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Создать'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+
+  void _showAddMemberDialog(BuildContext context, String familyId) {
+    final controller = TextEditingController();
+    bool isLoading = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (BuildContext innerDialogContext, setDialogState) {
+          return AlertDialog(
+            title: const Text('Добавить участника'),
+            content: TextField(
+              controller: controller,
+              enabled: !isLoading,
+              onChanged: (_) => setDialogState(() {}),
+              decoration: const InputDecoration(
+                hintText: 'Email участника',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: isLoading ? null : () => Navigator.of(dialogContext).pop(),
+                child: const Text('Отмена'),
+              ),
+              ElevatedButton(
+                onPressed: isLoading || controller.text.isEmpty
+                    ? null
+                    : () async {
+                        setDialogState(() => isLoading = true);
+                        try {
+                          await SupabaseService().addFamilyMemberByEmail(familyId, controller.text);
+                          if (!dialogContext.mounted) return;
+                          Navigator.of(dialogContext).pop();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Участник добавлен')),
+                          );
+                          setState(() {
+                            _familyProgress = null;
+                          });
+                        } catch (e) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Ошибка: $e')),
+                          );
+                          setDialogState(() => isLoading = false);
+                        }
+                      },
+                child: isLoading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Добавить'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
 
   Widget _buildStreakCard() {
     return Card(
@@ -335,9 +713,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        Row(
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
           children: [
-            Expanded(
+            SizedBox(
+              width: MediaQuery.of(context).size.width / 2 - 24,
               child: _buildStatCard(
                 'Тренировки',
                 '${_stats['totalWorkouts'] ?? 0}',
@@ -345,8 +726,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 Colors.blue,
               ),
             ),
-            const SizedBox(width: 12),
-            Expanded(
+            SizedBox(
+              width: MediaQuery.of(context).size.width / 2 - 24,
               child: _buildStatCard(
                 'Время',
                 '${_stats['totalDuration'] ?? 0} мин',
@@ -354,12 +735,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 Colors.green,
               ),
             ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
+            SizedBox(
+              width: MediaQuery.of(context).size.width / 2 - 24,
               child: _buildStatCard(
                 'Калории',
                 '${_stats['totalCalories'] ?? 0}',
@@ -367,13 +744,31 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 Colors.orange,
               ),
             ),
-            const SizedBox(width: 12),
-            Expanded(
+            SizedBox(
+              width: MediaQuery.of(context).size.width / 2 - 24,
               child: _buildStatCard(
                 'Среднее',
                 '${_stats['avgDuration'] ?? 0} мин',
                 Icons.trending_up,
                 Colors.purple,
+              ),
+            ),
+            SizedBox(
+              width: MediaQuery.of(context).size.width / 2 - 24,
+              child: _buildStatCard(
+                'Воды/день',
+                '${_stats['avgWater'] ?? 0} мл',
+                Icons.water,
+                Colors.cyan,
+              ),
+            ),
+            SizedBox(
+              width: MediaQuery.of(context).size.width / 2 - 24,
+              child: _buildStatCard(
+                'Шагов/день',
+                '${_stats['avgSteps'] ?? 0}',
+                Icons.directions_walk,
+                Colors.teal,
               ),
             ),
           ],

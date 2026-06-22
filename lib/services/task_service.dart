@@ -199,7 +199,7 @@ class TaskService {
     }
   }
 
-  /// Сброс локального состояния заданий при выходе или смене аккаунта.
+  /// Сброс состояния заданий при смене аккаунта.
   static Future<void> onUserSignedOut() async {
     _activeUserId = null;
     _completedTaskIds.clear();

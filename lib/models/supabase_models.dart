@@ -460,6 +460,82 @@ class Trainer {
   }
 }
 
+class ChatRoom {
+  final String id;
+  final String userId;
+  final String trainerId;
+  final String? lastMessage;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  const ChatRoom({
+    required this.id,
+    required this.userId,
+    required this.trainerId,
+    this.lastMessage,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  factory ChatRoom.fromJson(Map<String, dynamic> json) {
+    return ChatRoom(
+      id: json['id'] as String,
+      userId: json['user_id'] as String,
+      trainerId: json['trainer_id'] as String,
+      lastMessage: json['last_message'] as String?,
+      createdAt: DateTime.parse(json['created_at'] as String),
+      updatedAt: DateTime.parse(json['updated_at'] as String),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'user_id': userId,
+      'trainer_id': trainerId,
+      'last_message': lastMessage,
+      'created_at': createdAt.toIso8601String(),
+      'updated_at': updatedAt.toIso8601String(),
+    };
+  }
+}
+
+class ChatMessage {
+  final String id;
+  final String roomId;
+  final String senderId;
+  final String messageText;
+  final DateTime createdAt;
+
+  const ChatMessage({
+    required this.id,
+    required this.roomId,
+    required this.senderId,
+    required this.messageText,
+    required this.createdAt,
+  });
+
+  factory ChatMessage.fromJson(Map<String, dynamic> json) {
+    return ChatMessage(
+      id: json['id'] as String,
+      roomId: json['room_id'] as String,
+      senderId: json['sender_id'] as String,
+      messageText: json['message_text'] as String,
+      createdAt: DateTime.parse(json['created_at'] as String),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'room_id': roomId,
+      'sender_id': senderId,
+      'message_text': messageText,
+      'created_at': createdAt.toIso8601String(),
+    };
+  }
+}
+
 class News {
   final String id;
   final String title;
@@ -584,6 +660,8 @@ class TrainerWorkout {
   final DateTime createdAt;
   final DateTime? updatedAt;
   final String? trainerName;
+  final double rating;
+  final int ratingCount;
 
   const TrainerWorkout({
     required this.id,
@@ -599,6 +677,8 @@ class TrainerWorkout {
     required this.createdAt,
     this.updatedAt,
     this.trainerName,
+    this.rating = 0.0,
+    this.ratingCount = 0,
   });
 
   factory TrainerWorkout.fromJson(Map<String, dynamic> json) {
@@ -606,22 +686,63 @@ class TrainerWorkout {
     if (json['users'] != null && json['users'] is Map) {
       trainerName = (json['users'] as Map)['name'] as String?;
     }
+
+    String parseString(dynamic value) {
+      if (value == null) return '';
+      if (value is String) return value;
+      return value.toString();
+    }
+
+    int parseInt(dynamic value) {
+      if (value is int) return value;
+      if (value is String) return int.tryParse(value) ?? 0;
+      if (value is num) return value.toInt();
+      return 0;
+    }
+
+    bool parseBool(dynamic value) {
+      if (value is bool) return value;
+      if (value is String) return value.toLowerCase() == 'true';
+      if (value is num) return value != 0;
+      return false;
+    }
+
+    List<String> parseStringList(dynamic value) {
+      if (value == null) return [];
+      if (value is List) {
+        return value.map((item) => item?.toString() ?? '').where((item) => item.isNotEmpty).toList();
+      }
+      return [];
+    }
+
+    DateTime parseDateTime(dynamic value) {
+      if (value is DateTime) return value;
+      if (value is String && value.isNotEmpty) {
+        try {
+          return DateTime.parse(value);
+        } catch (_) {
+          return DateTime.now();
+        }
+      }
+      return DateTime.now();
+    }
+
     return TrainerWorkout(
-      id: json['id'] as String,
-      trainerId: json['trainer_id'] as String,
-      title: json['title'] as String,
-      description: json['description'] as String,
-      difficulty: json['difficulty'] as String,
-      duration: json['duration'] as int,
-      muscleGroups: List<String>.from(json['muscle_groups'] as List),
-      equipment: List<String>.from(json['equipment'] as List),
-      videoUrl: json['video_url'] as String,
-      isPublished: json['is_published'] as bool,
-      createdAt: DateTime.parse(json['created_at'] as String),
-      updatedAt: json['updated_at'] != null
-          ? DateTime.parse(json['updated_at'] as String)
-          : null,
+      id: parseString(json['id']),
+      trainerId: parseString(json['trainer_id']),
+      title: parseString(json['title']),
+      description: parseString(json['description']),
+      difficulty: parseString(json['difficulty']).isNotEmpty ? parseString(json['difficulty']) : 'beginner',
+      duration: parseInt(json['duration']),
+      muscleGroups: parseStringList(json['muscle_groups']),
+      equipment: parseStringList(json['equipment']),
+      videoUrl: parseString(json['video_url']),
+      isPublished: parseBool(json['is_published']),
+      createdAt: parseDateTime(json['created_at']),
+      updatedAt: json['updated_at'] != null ? parseDateTime(json['updated_at']) : null,
       trainerName: trainerName,
+      rating: (json['rating'] as num?)?.toDouble() ?? 0.0,
+      ratingCount: json['rating_count'] as int? ?? 0,
     );
   }
 
@@ -639,6 +760,182 @@ class TrainerWorkout {
       'is_published': isPublished,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt?.toIso8601String(),
+    };
+  }
+
+  TrainerWorkout copyWith({
+    double? rating,
+    int? ratingCount,
+    String? id,
+    String? trainerId,
+    String? title,
+    String? description,
+    String? difficulty,
+    int? duration,
+    List<String>? muscleGroups,
+    List<String>? equipment,
+    String? videoUrl,
+    bool? isPublished,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    String? trainerName,
+  }) {
+    return TrainerWorkout(
+      id: id ?? this.id,
+      trainerId: trainerId ?? this.trainerId,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      difficulty: difficulty ?? this.difficulty,
+      duration: duration ?? this.duration,
+      muscleGroups: muscleGroups ?? this.muscleGroups,
+      equipment: equipment ?? this.equipment,
+      videoUrl: videoUrl ?? this.videoUrl,
+      isPublished: isPublished ?? this.isPublished,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      trainerName: trainerName ?? this.trainerName,
+      rating: rating ?? this.rating,
+      ratingCount: ratingCount ?? this.ratingCount,
+    );
+  }
+}
+
+class WorkoutComment {
+  final String id;
+  final String workoutId;
+  final String userId;
+  final String text;
+  final DateTime createdAt;
+  final String? userName;
+  final String? avatarPath;
+
+  WorkoutComment({
+    required this.id,
+    required this.workoutId,
+    required this.userId,
+    required this.text,
+    required this.createdAt,
+    this.userName,
+    this.avatarPath,
+  });
+
+  factory WorkoutComment.fromJson(Map<String, dynamic> json) {
+    String? userName;
+    String? avatarPath;
+    if (json['users'] != null && json['users'] is Map<String, dynamic>) {
+      userName = (json['users'] as Map<String, dynamic>)['name'] as String?;
+      avatarPath = (json['users'] as Map<String, dynamic>)['avatar_path'] as String?;
+    }
+
+    return WorkoutComment(
+      id: json['id'] as String,
+      workoutId: json['workout_id'] as String,
+      userId: json['user_id'] as String,
+      text: json['comment_text'] as String,
+      createdAt: DateTime.parse(json['created_at'] as String),
+      userName: userName,
+      avatarPath: avatarPath,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'workout_id': workoutId,
+      'user_id': userId,
+      'comment_text': text,
+      'created_at': createdAt.toIso8601String(),
+    };
+  }
+}
+
+class Family {
+  final String id;
+  final String name;
+  final String ownerId;
+  final DateTime createdAt;
+  final DateTime? updatedAt;
+
+  const Family({
+    required this.id,
+    required this.name,
+    required this.ownerId,
+    required this.createdAt,
+    this.updatedAt,
+  });
+
+  factory Family.fromJson(Map<String, dynamic> json) {
+    return Family(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      ownerId: json['owner_id'] as String,
+      createdAt: DateTime.parse(json['created_at'] as String),
+      updatedAt: json['updated_at'] != null ? DateTime.parse(json['updated_at'] as String) : null,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'owner_id': ownerId,
+      'created_at': createdAt.toIso8601String(),
+      'updated_at': updatedAt?.toIso8601String(),
+    };
+  }
+}
+
+class FamilyMember {
+  final String id;
+  final String familyId;
+  final String userId;
+  final String role;
+  final DateTime joinedAt;
+  final String? userName;
+  final String? userEmail;
+  final String? avatarPath;
+
+  const FamilyMember({
+    required this.id,
+    required this.familyId,
+    required this.userId,
+    required this.role,
+    required this.joinedAt,
+    this.userName,
+    this.userEmail,
+    this.avatarPath,
+  });
+
+  factory FamilyMember.fromJson(Map<String, dynamic> json) {
+    String? userName;
+    String? userEmail;
+    String? avatarPath;
+    if (json['users'] != null && json['users'] is Map<String, dynamic>) {
+      final users = json['users'] as Map<String, dynamic>;
+      userName = users['name'] as String?;
+      userEmail = users['email'] as String?;
+      avatarPath = users['avatar_path'] as String?;
+    }
+
+    return FamilyMember(
+      id: json['id'] as String,
+      familyId: json['family_id'] as String,
+      userId: json['user_id'] as String,
+      role: json['role'] as String,
+      joinedAt: DateTime.parse(json['joined_at'] as String),
+      userName: userName,
+      userEmail: userEmail,
+      avatarPath: avatarPath,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'family_id': familyId,
+      'user_id': userId,
+      'role': role,
+      'joined_at': joinedAt.toIso8601String(),
     };
   }
 }

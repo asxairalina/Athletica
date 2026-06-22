@@ -4,7 +4,7 @@ import 'dart:typed_data';
 
 import 'picked_avatar_image.dart';
 
-/// Web: выбор файла через HTML input[type=file] без Flutter-плагинов.
+
 Future<PickedAvatarImage?> pickAvatarFromGallery() async {
   final uploadInput = html.FileUploadInputElement()..accept = 'image/*';
   final completer = Completer<PickedAvatarImage?>();

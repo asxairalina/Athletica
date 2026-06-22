@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../screens/profile_screen.dart';
 import '../screens/settings_screen.dart';
+import '../screens/chats_screen.dart';
+import '../screens/trainers_screen.dart';
 import '../services/supabase_service.dart';
 import '../models/supabase_models.dart';
 import 'profile_avatar.dart';
@@ -62,6 +64,18 @@ class _AvatarDropdownState extends State<AvatarDropdown> {
               MaterialPageRoute(builder: (context) => const ProfileScreen()),
             ).then((_) => _loadUserProfile());
             break;
+          case 'chats':
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const ChatsScreen()),
+            );
+            break;
+          case 'trainers':
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const TrainersScreen()),
+            );
+            break;
           case 'settings':
             Navigator.push(
               context,
@@ -81,6 +95,32 @@ class _AvatarDropdownState extends State<AvatarDropdown> {
               ),
               const SizedBox(width: 12),
               const Text('Профиль'),
+            ],
+          ),
+        ),
+        PopupMenuItem<String>(
+          value: 'chats',
+          child: Row(
+            children: [
+              Icon(
+                Icons.chat,
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
+              const SizedBox(width: 12),
+              const Text('Чаты'),
+            ],
+          ),
+        ),
+        PopupMenuItem<String>(
+          value: 'trainers',
+          child: Row(
+            children: [
+              Icon(
+                Icons.people,
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
+              const SizedBox(width: 12),
+              const Text('Тренеры'),
             ],
           ),
         ),
